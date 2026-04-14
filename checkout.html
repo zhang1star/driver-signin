@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+  <title>司机签退</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">🚪</span>
+  <h1>司机签退</h1>
+  <button class="back-btn" onclick="location.href='index.html'">← 返回</button>
+</div>
+
+<div class="loading-mask hidden" id="loadingMask">
+  <div class="spinner"></div>
+  <span id="loadingText">加载中…</span>
+</div>
+
+<div class="container fade-in">
+  <!-- 搜索 + 列表 -->
+  <div class="card" id="searchCard">
+    <div class="banner banner-info" style="margin-bottom:16px">
+      🔍 请搜索并选择您的车辆，然后点击确认签退。
+    </div>
+
+    <div class="form-group">
+      <label>搜索车牌号 / 姓名</label>
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="输入车牌号或姓名…"
+               oninput="this.value=this.value.toUpperCase();onSearch()" maxlength="20">
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:13px;color:var(--muted)">当前在场车辆</span>
+      <span id="countBadge" style="font-size:12px;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:20px;font-weight:600">—</span>
+    </div>
+    <div class="plate-list" id="plateList">
+      <div class="empty-tip"><div class="empty-icon">⏳</div><div>加载中…</div></div>
+    </div>
+
+    <div class="divider"></div>
+    <button class="btn btn-success" id="checkoutBtn" onclick="doCheckOut()" disabled>🚪 确认签退</button>
+  </div>
+
+  <!-- 成功 -->
+  <div class="card hidden" id="successCard">
+    <div class="success-wrap">
+      <div class="big-icon pop">🎉</div>
+      <h2>签退成功！</h2>
+      <p>感谢您的配合，一路平安！</p>
+    </div>
+    <table class="info-table">
+      <tr><td>姓名</td><td id="s_name"></td></tr>
+      <tr><td>车牌号</td><td id="s_plate"></td></tr>
+      <tr><td>所属公司</td><td id="s_company"></td></tr>
+      <tr><td>签到时间</td><td id="s_inTime"></td></tr>
+      <tr><td>签退时间</td><td id="s_outTime"></td></tr>
+      <tr><td>在场时长</td><td id="s_duration"></td></tr>
+    </table>
+    <div style="margin-top:20px;display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-outline" onclick="resetPage()">继续签退（下一位）</button>
+      <button class="btn btn-success" onclick="location.href='index.html'">返回首页</button>
+    </div>
+  </div>
+</div>
+
+<script src="api.js"></script>
+<script>
+  let selectedId = null;
+  let allOnSite  = [];
+
+  async function loadOnSite() {
+    try {
+      allOnSite = await API.onSite();
+      renderList(allOnSite);
+    } catch(e) {
+      document.getElementById('plateList').innerHTML =
+        `<div class="empty-tip"><div class="empty-icon">❌</div><div>加载失败，请刷新重试</div></div>`;
+    }
+  }
+
+  function renderList(records) {
+    document.getElementById('countBadge').textContent = `${records.length} 辆`;
+    const list = document.getElementById('plateList');
+    if (!records.length) {
+      list.innerHTML = `<div class="empty-tip"><div class="empty-icon">🚗</div><div>暂无在场车辆</div></div>`;
+      return;
+    }
+    list.innerHTML = records.map(r => `
+      <div class="plate-item ${r.id === selectedId ? 'selected' : ''}"
+           onclick="selectRecord('${r.id}')" data-id="${r.id}">
+        <div>
+          <div class="plate-no">${r.plate}</div>
+          <div class="plate-meta">${r.name} · ${r.company} · 签到 ${fmtTime(r.in_time)}</div>
+        </div>
+        <span class="check-icon">✅</span>
+      </div>`).join('');
+  }
+
+  function onSearch() {
+    const kw = document.getElementById('searchInput').value.trim().toUpperCase();
+    const filtered = kw
+      ? allOnSite.filter(r => r.plate.includes(kw) || r.name.toUpperCase().includes(kw))
+      : allOnSite;
+    renderList(filtered);
+    if (selectedId && !filtered.find(r => r.id === selectedId)) {
+      selectedId = null;
+      document.getElementById('checkoutBtn').disabled = true;
+    }
+  }
+
+  function selectRecord(id) {
+    selectedId = id;
+    document.getElementById('checkoutBtn').disabled = false;
+    document.querySelectorAll('.plate-item').forEach(el => {
+      el.classList.toggle('selected', el.dataset.id === id);
+    });
+  }
+
+  async function doCheckOut() {
+    if (!selectedId) return;
+    document.getElementById('loadingMask').classList.remove('hidden');
+    document.getElementById('loadingText').textContent = '签退中…';
+    document.getElementById('checkoutBtn').disabled = true;
+    try {
+      const record = await API.checkOut(selectedId);
+      document.getElementById('searchCard').classList.add('hidden');
+      const sc = document.getElementById('successCard');
+      sc.classList.remove('hidden');
+      sc.classList.add('fade-in');
+      document.getElementById('s_name').textContent     = record.name;
+      document.getElementById('s_plate').textContent    = record.plate;
+      document.getElementById('s_company').textContent  = record.company;
+      document.getElementById('s_inTime').textContent   = fmtTime(record.in_time);
+      document.getElementById('s_outTime').textContent  = fmtTime(record.out_time);
+      document.getElementById('s_duration').textContent = duration(record.in_time, record.out_time);
+    } catch(e) {
+      alert('签退失败，请重试：' + e.message);
+      document.getElementById('checkoutBtn').disabled = false;
+    } finally {
+      document.getElementById('loadingMask').classList.add('hidden');
+    }
+  }
+
+  function resetPage() {
+    selectedId = null;
+    document.getElementById('searchInput').value = '';
+    document.getElementById('checkoutBtn').disabled = true;
+    document.getElementById('successCard').classList.add('hidden');
+    document.getElementById('searchCard').classList.remove('hidden');
+    loadOnSite();
+  }
+
+  loadOnSite();
+</script>
+</body>
+</html>
