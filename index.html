@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+  <title>司机签到系统</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .welcome{text-align:center;padding:28px 0 8px}
+    .welcome .main-icon{font-size:56px;display:block;margin-bottom:10px}
+    .welcome h2{font-size:22px;font-weight:800}
+    .welcome p{font-size:14px;color:var(--muted);margin-top:4px}
+    .time-display{text-align:center;font-size:13px;color:var(--muted);padding:4px 0 8px}
+    .onsite-tip{display:flex;align-items:center;justify-content:space-between;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;font-size:13px;color:#1d4ed8}
+    .onsite-tip strong{font-size:18px}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">🚛</span>
+  <h1>司机到离场管理</h1>
+</div>
+
+<div class="container fade-in">
+  <div class="welcome">
+    <span class="main-icon">🏭</span>
+    <h2>欢迎来到签到系统</h2>
+    <p>请选择您要进行的操作</p>
+  </div>
+
+  <div class="time-display" id="timeDisplay"></div>
+
+  <div class="onsite-tip">
+    <span>🚗 当前在场车辆</span>
+    <strong id="onsiteCount">—</strong>
+  </div>
+
+  <div class="home-btn-wrap">
+    <button class="home-big-btn btn-checkin" onclick="location.href='checkin.html'">
+      <div class="icon">✅</div>
+      <div class="info"><h2>司机签到</h2><p>到场登记 · 填写车辆信息</p></div>
+      <span style="font-size:20px;margin-left:auto">›</span>
+    </button>
+    <button class="home-big-btn btn-checkout" onclick="location.href='checkout.html'">
+      <div class="icon">🚪</div>
+      <div class="info"><h2>司机签退</h2><p>离场登记 · 选择车牌确认</p></div>
+      <span style="font-size:20px;margin-left:auto">›</span>
+    </button>
+    <button class="home-big-btn btn-admin" onclick="goAdmin()">
+      <div class="icon">📋</div>
+      <div class="info"><h2>管理后台</h2><p>查看全部签到签退记录</p></div>
+      <span style="font-size:20px;margin-left:auto">›</span>
+    </button>
+  </div>
+
+  <p class="text-center text-muted mt8">如有问题请联系现场管理员</p>
+</div>
+
+<script src="api.js"></script>
+<script>
+  // 实时时钟
+  function tick() {
+    const d = new Date(), p = n => String(n).padStart(2,'0');
+    const days = ['日','一','二','三','四','五','六'];
+    document.getElementById('timeDisplay').textContent =
+      `${d.getFullYear()}年${p(d.getMonth()+1)}月${p(d.getDate())}日 星期${days[d.getDay()]}  ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  tick(); setInterval(tick, 1000);
+
+  // 在场数量
+  API.onSite().then(list => {
+    document.getElementById('onsiteCount').textContent = list.length;
+  }).catch(() => {
+    document.getElementById('onsiteCount').textContent = '—';
+  });
+
+  function goAdmin() {
+    const pwd = prompt('请输入管理员密码：');
+    if (pwd === null) return;
+    if (pwd === ADMIN_PASSWORD) location.href = 'admin.html';
+    else alert('密码错误！');
+  }
+</script>
+</body>
+</html>
