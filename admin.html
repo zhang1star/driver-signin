@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+  <title>管理后台</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .onsite-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .onsite-card{background:var(--card);border-radius:12px;padding:14px;box-shadow:var(--shadow);border-top:3px solid var(--primary)}
+    .onsite-card .oc-plate{font-size:18px;font-weight:800;letter-spacing:1px}
+    .onsite-card .oc-name{font-size:13px;color:var(--muted);margin-top:2px}
+    .onsite-card .oc-time{font-size:11px;color:var(--muted);margin-top:6px}
+    .onsite-card .oc-dur{font-size:12px;font-weight:600;color:var(--primary);margin-top:4px}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">📋</span>
+  <h1>管理后台</h1>
+  <button class="back-btn" onclick="location.href='index.html'">← 返回</button>
+</div>
+
+<div class="loading-mask hidden" id="loadingMask">
+  <div class="spinner"></div><span>加载中…</span>
+</div>
+
+<div class="container fade-in">
+
+  <!-- 统计 -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card blue"><div class="num" id="statTotal">—</div><div class="lbl">总签到次数</div></div>
+    <div class="stat-card green"><div class="num" id="statOnsite">—</div><div class="lbl">当前在场</div></div>
+    <div class="stat-card warn"><div class="num" id="statToday">—</div><div class="lbl">今日签到</div></div>
+  </div>
+
+  <!-- 当前在场车辆 -->
+  <div class="card">
+    <div class="section-title">
+      <span>🚗 当前在场车辆</span>
+      <button class="action-btn" onclick="loadAll()">🔄 刷新</button>
+    </div>
+    <div class="onsite-grid" id="onsiteGrid">
+      <div class="empty-tip" style="grid-column:1/-1"><div class="empty-icon">⏳</div><div>加载中…</div></div>
+    </div>
+  </div>
+
+  <!-- 筛选 -->
+  <div class="card">
+    <div class="filter-row">
+      <input type="text" id="filterKeyword" placeholder="🔍 车牌/姓名"
+             oninput="this.value=this.value.toUpperCase();renderRecords()">
+      <select id="filterCompany" onchange="renderRecords()">
+        <option value="">全部公司</option>
+        <option value="中通">中通</option>
+        <option value="月祥">月祥</option>
+        <option value="自有">自有</option>
+        <option value="货拉拉">货拉拉</option>
+      </select>
+    </div>
+    <div class="filter-row mt8">
+      <input type="date" id="filterDate" onchange="renderRecords()">
+      <button class="action-btn" onclick="exportCSV()">📥 导出 CSV</button>
+    </div>
+  </div>
+
+  <!-- Tab -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabAll"    onclick="switchTab('all')">全部记录</button>
+    <button class="tab-btn"        id="tabOnsite" onclick="switchTab('onsite')">在场中</button>
+    <button class="tab-btn"        id="tabDone"   onclick="switchTab('done')">已离场</button>
+  </div>
+
+  <div class="section-title">
+    <span id="listTitle">全部记录</span>
+    <span id="listCount" style="font-size:13px;font-weight:400"></span>
+  </div>
+  <div class="record-list" id="recordList"></div>
+</div>
+
+<script src="api.js"></script>
+<script>
+  let currentTab = 'all';
+  let allRecords = [];
+
+  async function loadAll() {
+    document.getElementById('loadingMask').classList.remove('hidden');
+    try {
+      const [records, stats, onsite] = await Promise.all([
+        API.all(),
+        API.stats(),
+        API.onSite(),
+      ]);
+      allRecords = records;
+      // 统计
+      document.getElementById('statTotal').textContent  = stats.total;
+      document.getElementById('statOnsite').textContent = stats.onsite;
+      document.getElementById('statToday').textContent  = stats.today;
+      // 在场网格
+      renderOnsiteGrid(onsite);
+      // 记录列表
+      renderRecords();
+    } catch(e) {
+      alert('加载失败：' + e.message);
+    } finally {
+      document.getElementById('loadingMask').classList.add('hidden');
+    }
+  }
+
+  function renderOnsiteGrid(list) {
+    const grid = document.getElementById('onsiteGrid');
+    if (!list.length) {
+      grid.innerHTML = `<div class="empty-tip" style="grid-column:1/-1"><div class="empty-icon">🚗</div><div>暂无在场车辆</div></div>`;
+      return;
+    }
+    grid.innerHTML = list.map(r => `
+      <div class="onsite-card">
+        <div class="oc-plate">${r.plate}</div>
+        <div class="oc-name">${r.name} · ${r.company}</div>
+        <div class="oc-time">签到：${fmtTime(r.in_time)}</div>
+        <div class="oc-dur">已在场 ${duration(r.in_time, null)}</div>
+      </div>`).join('');
+  }
+
+  function getFiltered() {
+    let list = [...allRecords];
+    if (currentTab === 'onsite') list = list.filter(r => !r.out_time);
+    if (currentTab === 'done')   list = list.filter(r =>  r.out_time);
+    const kw = document.getElementById('filterKeyword').value.trim().toUpperCase();
+    if (kw) list = list.filter(r => r.plate.includes(kw) || r.name.toUpperCase().includes(kw));
+    const co = document.getElementById('filterCompany').value;
+    if (co) list = list.filter(r => r.company === co);
+    const dt = document.getElementById('filterDate').value;
+    if (dt) list = list.filter(r => r.in_time.startsWith(dt));
+    return list;
+  }
+
+  function renderRecords() {
+    const list = getFiltered();
+    document.getElementById('listCount').textContent = `共 ${list.length} 条`;
+    const container = document.getElementById('recordList');
+    if (!list.length) {
+      container.innerHTML = `<div class="empty-tip"><div class="empty-icon">📭</div><div>暂无符合条件的记录</div></div>`;
+      return;
+    }
+    container.innerHTML = list.map(r => {
+      const isIn = !r.out_time;
+      return `
+        <div class="record-card ${isIn ? 'in' : 'out'} fade-in">
+          <div class="rc-head">
+            <span class="rc-plate">${r.plate}</span>
+            <div style="display:flex;gap:6px;align-items:center">
+              ${companyBadge(r.company)}
+              <span class="rc-badge ${isIn ? 'badge-in' : 'badge-out'}">${isIn ? '在场中' : '已离场'}</span>
+            </div>
+          </div>
+          <div class="rc-info">
+            <span>👤 ${r.name}</span>
+            <span>📱 ${r.phone}</span>
+            ${!isIn ? `<span>⏱ ${duration(r.in_time, r.out_time)}</span>` : ''}
+          </div>
+          <div class="rc-time">
+            签到：${fmtTime(r.in_time)}
+            ${r.out_time ? `　签退：${fmtTime(r.out_time)}` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    ['all','onsite','done'].forEach(t => {
+      const id = 'tab' + t.charAt(0).toUpperCase() + t.slice(1);
+      document.getElementById(id).classList.toggle('active', t === tab);
+    });
+    renderRecords();
+  }
+
+  function exportCSV() {
+    const list = getFiltered();
+    if (!list.length) { alert('没有可导出的数据'); return; }
+    const header = ['姓名','车牌号','手机号','所属公司','签到时间','签退时间','在场时长'];
+    const rows = list.map(r => [
+      r.name, r.plate, r.phone, r.company,
+      fmtTime(r.in_time), fmtTime(r.out_time),
+      r.out_time ? duration(r.in_time, r.out_time) : '在场中'
+    ]);
+    const csv = '\uFEFF' + [header,...rows]
+      .map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+      .join('\r\n');
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})),
+      download: `司机签到记录_${new Date().toISOString().slice(0,10)}.csv`,
+    });
+    a.click();
+  }
+
+  loadAll();
+</script>
+</body>
+</html>
